@@ -1,16 +1,15 @@
 import requests
 import re
 import json
+import sys
 from connect_database import execute_mysql_query_with_params, write_data_to_mysql
 
 
 def sanitize_numbers_only(value):
-    """Remove todos os caracteres não numéricos de uma string."""
     return re.sub(r'\D', '', value)
 
 
 def obter_token():
-    """Obtém um token de autenticação para acesso à API."""
     url = "https://auth.somultas.com/realms/organ-query-realm/protocol/openid-connect/token"
     payload = {
         "grant_type": "password",
@@ -20,41 +19,34 @@ def obter_token():
         "client_secret": "JGoNtJZamflh8CbiCvc24P7dkxRcUHXE"
     }
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
-    
     response = requests.post(url, data=payload, headers=headers)
     response.raise_for_status()
-    
     return response.json().get("access_token")
 
 
 def obter_dados_cliente(cpf, token):
-    """Consulta os dados do cliente pelo CPF."""
     url = f"https://api.somultas.com/clientes/{cpf}"
     headers = {"Accept": "application/json", "Authorization": f"Bearer {token}"}
-    
     response = requests.get(url, headers=headers)
     response.raise_for_status()
-    
     dados = response.json()
     if isinstance(dados, list) and len(dados) > 0:
-        return dados[0]  # Retorna o primeiro cliente encontrado
+        return dados[0]
     elif isinstance(dados, dict):
         return dados
     return None
 
 
 def format_phone_number(phone_number):
-    """Formata o telefone no padrão: (XX) XXXX-XXXXX."""
     numbers_only = sanitize_numbers_only(phone_number)
-    if len(numbers_only) == 11:  # DDD + 9 dígitos
+    if len(numbers_only) == 11:
         return f"({numbers_only[:2]}) {numbers_only[2:6]}-{numbers_only[6:]}"
-    elif len(numbers_only) == 10:  # DDD + 8 dígitos
+    elif len(numbers_only) == 10:
         return f"({numbers_only[:2]}) {numbers_only[2:6]}-{numbers_only[6:]}"
-    return phone_number  # Retorna original se não conseguir formatar
+    return phone_number
 
 
 def get_cliente_info(telefone):
-    """Consulta informações do cliente no banco de dados pelo telefone."""
     telefone_formatado = format_phone_number(telefone)
     telefone_limpio = sanitize_numbers_only(telefone)
 
@@ -71,7 +63,6 @@ def get_cliente_info(telefone):
     return None, None, None, None
 
 
-# As funções abaixo devem ser implementadas conforme sua lógica de negócio.
 def check_sms_status(sms_enviadas, whats_app, twillo, data_cadastro):
     pass
 
@@ -83,7 +74,6 @@ def ultima_mensagem(identificador):
 
 
 def validar_cliente(telefone):
-    """Realiza a validação do cliente e retorna uma mensagem com o status."""
     sms_enviadas, whats_app, twillo, data_cadastro = get_cliente_info(telefone)
     
     if sms_enviadas is None:
@@ -130,15 +120,20 @@ def validar_cliente(telefone):
 
 
 def main():
-    """Fluxo principal com saída padronizada."""
-    cpf_cliente = input("🆔 CPF Cliente: ")
+    if len(sys.argv) < 2:
+        print("❌ CPF não fornecido.")
+        return
+
+    cpf_cliente = sys.argv[1]
     cpf_clean = sanitize_numbers_only(cpf_cliente)
     if len(cpf_clean) < 11:
+        print("❌ CPF inválido.")
         return
 
     token = obter_token()
     cliente = obter_dados_cliente(cpf_clean, token)
     if not cliente:
+        print("❌ Cliente não encontrado.")
         return
 
     print("✅ Cliente encontrado")
@@ -146,6 +141,7 @@ def main():
     telefone = cliente.get('telefone1')
     nome = cliente.get('nome')
     if not telefone or not nome:
+        print("❌ Dados incompletos.")
         return
 
     telefone_formatado = format_phone_number(telefone)
